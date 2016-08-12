@@ -8,7 +8,7 @@
 #define HEAD_LOC		0	// Location of header information in EEPROM
 #define COUNT_LOC		2	// Location of count information in EEPROM
 #define START_LOC		4	// Location of where timecards begin in EEPROM
-#define MAX_CARD_COUNT	12	// Number of cards stored in EEPROM (Pretend that there are only 64 bytes to play with
+#define MAX_CARD_COUNT	12	// Number of cards stored in EEPROM (Pretend that there are only 64 bytes to play with)
 #define EEPROM_SIZE		64	// Number of bytes available in EEPROM
 #define CARD_SIZE		5	// Number of bytes taken up by a block
 #define MAX_TIME		600	// Number of (1/10th) seconds until time reset
@@ -57,7 +57,9 @@ float reading_B = 266.0;
 // Used to store current data between loops
 uint32_t timeIn;
 uint32_t timeOut;
-const struct timeCard emptyCard = {0,0}; 
+unsigned long millisIn;
+unsigned long timeSince;
+const struct timeCard emptyCard = {{0,0,0},0}; 
 struct timeCard currentCard;
 
 playState state;
@@ -135,7 +137,9 @@ void loop()
 	switch (state) {
 		case PLAYING	:
 		// Wait until we have to stop playing
-			if (sec > timeOut){
+			timeSince = millis() - millisIn;
+			timeSince /= 100;
+			if (timeSince > (unsigned long)currentCard.duration){
 				state = DONE;
 			} else {
 				// If the track is over, start it again
@@ -146,10 +150,9 @@ void loop()
 			break;
 		case DONE	:	
 		// Stop the music, update the currentCard and header information, then move on
-			// Store in seperate removal function
 			removeCard();
 			timeIn = 0;
-			timeOut = 0;
+			timeSince = 0;
 			currentCard = emptyCard;
 			
 			state = NOPLAY;
@@ -165,11 +168,14 @@ void loop()
 				Serial.println("Card set");
 				EEPROM.readBlock(headAddress, currentCard);	// currentCard is now the new card
 				timeIn = blockToLong(currentCard.timeIn);
-				timeOut = timeIn + (uint32_t)currentCard.duration;
+				//timeOut = timeIn + (uint32_t)currentCard.duration;
 				cardSet = true;
 			}
 
 			if (cardSet) {
+				Serial.print(sec);
+				Serial.print(" ~ ");
+				Serial.println(timeIn);
 				if (sec > timeIn) {
 					state = START;
 				}
@@ -178,6 +184,7 @@ void loop()
 			break;
 		case START	:	// Play the music
 			state = PLAYING;
+			millisIn = millis(); // the time when we start playing according to the actual clock
 			//Emergency readouts
 			//Serial.print("Starting card from address ");
 			//Serial.print(headAddress);
@@ -203,7 +210,7 @@ void loop()
 	getSeatState(buttonDown);
 	
 
-	if (buttonDown && !wasDown) {	// Just sat down, record time
+	if (buttonDown && !wasDown) {	// Just sat down; record time
 		buttonTimeIn = millis() / 100;
 		Serial.print("Time in:\t");
 		Serial.println(buttonTimeIn);
@@ -248,7 +255,7 @@ void getSeatState(bool &seatState) {
 		seatState = false;
 	}
 
-	/*// This is the strain gauge version (the final)
+	/*// This is the strain gauge version (the final (it works))
 	float reading_Now = analogRead(0);  // analog in 0 for Strain 1
   
 	// Calculate load by interpolation 
